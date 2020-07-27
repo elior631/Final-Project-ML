@@ -1,0 +1,1279 @@
+---
+title: "Final Project - Social Pressure"
+author: "Elior Bliah"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    code_folding: hide
+    df_print: kable
+    results: hide
+    theme: readable
+    toc: TRUE
+    toc_float: TRUE
+---
+
+# Economic Paper
+
+<p>
+For my final project of the course 'Machine Learning for Economist (Master degree) at the Hebrew University of Jerusalem, I chose to work on the paper:<br>
+<div class="quote-container">
+> ***“Social Pressure and Voter Turnout: Evidence from a Large-Scale Field Experiment” by Gerber, Green, and Larimer (2008).*** 
+
+</div>
+The interesting research questions *"On what extent do social norms cause voter turnout?"* rely on the need to understand why people put effort to vote. Each Individual knows that a single vote is of no significance where there are a multitude of electors (Hegel). One hypothesis is adherence to social norms. Namely, there is social pressure that people react to. Moreover, insofar as the literature fails distinguish between the intrinsic rewards that voters obtain from performing this duty and the extrinsic rewards that voters receive when **others observe** them doing so. Formally, : $D= U(D_I,D_E)$. D is the direct benefit from voting. $U$ is the citizen’s utility from voting given $D_I$ and $D_E$, where $D_I$ is the intrinsic benefits associated with voting, a term that captures the positive feeling the voter experiences from fulfilling a civic duty, regardless of any other consequences associated with the act, and where $D_E$ is the extrinsic benefit from voting, a term which captures the social consequences of voting. The equation is a linear representation of both utilities: $U(D_I,D_E) \approx \beta_1D_I + \beta_1D_E$ where β1 and β2 are positive constants.
+I find the paper interesting because unlike most previous experiments, which have taken place in laboratory settings, this one takes place in the context of an actual election. Another reason I wanted to work with this paper is the experiment methods. In detail, it is a clear randomized control trial (RCT) experiment that measures how social pressure affects voting turnout, allowing further analysis. It is important to mention that Halland (1986) Introduced to concept of Fundamental problem of causal inference. The basic idea is that we cannot observe $Y_{1i}$ and $Y_{0i}$. In our case, we don't know for sure what a certain household in the treatment group would have voted if he was in the control group.
+A mathematical representation of the concept is $\big\{ Y_{1i},Y_{0i}\big\} \perp D_i$ Where the potential outcomes $Y$ are orthogonal to the treatment. A good way to overcome this issue will be performed in this paper. Theoretically, each treatment group has his own average treatment effect (ATE), it is represented as $\tau = E[Y_{i1}- Y_{i0}]$. Namely, it is the expectancy of the outcomes gap in different states.
+
+<p>
+In the available sample, voters household was randomly assigned into two groups: Treatment and Control that received by mail different message:
+
+<ol type="A"><li> The treatment group (80,000 households) was divided to four (20,000 each) where each receives a different mail in terms of content as the following:</li>
+
+<ol><li> One experimental group received a mailing that merely reminded them that voting is a civic duty. This mail provides a baseline for comparison with the other treatments because it does little besides emphasize *civic duty*. Households receiving this type of mailing were told, “Remember your rights and responsibilities as a citizen. Remember to vote.” </li>
+<li>For the second group, they were told that researchers would be studying their turnout based on public records "*Hawthorne* effect”</li>
+<li>The third treatment group received mailings displaying the record of turnout among those in the household. The *“Self”* mailing exerts more social pressure by informing recipients that who votes is public information and listing the recent voting record of each registered voter in the household.</li>
+<li>The fourth mailing, “Neighbors,” ratchets up the social pressure even further by listing not only the household’s voting records but also the voting records of those living nearby.</li>
+</ol>
+<li> The Control group (100,000 households) did not receive anything.</li>
+</ol>
+<p>
+
+# Replications
+
+In this section table 2 and 3 were replicated.
+
+#### Packages
+```{r packages, message=FALSE, warning=FALSE}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidymodels,tidyverse, devtools,tibble,rms,stargazer,kableExtra,
+rsample, knitr,dplyr,experimentdatar,hdm,causalTree, glmnet, vip,stargazer, ROCit, caret,rpart)
+```
+
+
+## Table 2
+
+Table 2 reports basic turnout rates for each of the experimental groups (treatments).
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+social<-read.csv(file="GerberGreenLarimer_APSR_2008_social_pressure.csv",head=TRUE,sep=",")
+social$treatment<-as.factor(social$treatment)
+table2<-table(social$voted,social$treatment)
+round(prop.table(table2,2)*100,1)
+table2_row1<-as.vector(round(prop.table(table2,2)*100,1)[2,])
+table2_row2<- as.vector(table2[1,] + table2[2,])
+
+a<-matrix(table2_row1, nrow = 1, ncol = 5)
+b<-matrix(table2_row2, nrow = 1, ncol = 5)
+
+table2_rep<- rbind(a,b)
+table2_rep[ , c(1,2)] <- table2_rep[ , c(2,1)]
+table2_rep[ , c(4,5)] <- table2_rep[ , c(5,4)]
+rownames(table2_rep) <- c("Voting Percentage (%)", "No. of Individuals")
+colnames(table2_rep) <- c("Control","Civic Duty", "Hawthorne","Self","Neighbors")
+
+ kable(table2_rep, align = 'c', format.args = list(big.mark = ",", 
+  scientific = FALSE)) %>%
+   kable_styling(bootstrap_options = c( "hover", "condensed", "responsive"),fixed_thead = T , full_width = F) %>%
+  column_spec(1, bold = T, border_right = T)
+
+```
+
+The replication is exact. It is very interesting to see how the more we add social pressure, the more the percentage of voting rises. The highest level of pressure 'Neighbors' treatment group present 10% more than the control group. The next phase of the analysis is to prove if it's significant as well.
+
+## Table 3
+
+Table 3 reports the main findings of the research. The table contains three models where each model adds features over the previous one.
+<p>
+
+General note: The main complication associated with individual-level analysis of data that were randomized at the household-level is that proper estimation of the standard errors requires a correction for the possibility that individuals within each household share unobserved characteristics. For this reason, Table 3 reports robust cluster standard errors, which take intrahousehold correlation into account. To run such a model I used the `rms` package. The standard errors were calculated with the ['robcov'](https://www.rdocumentation.org/packages/rms/versions/6.0-0/topics/robcov) function. The function returns robust clustered errors that corrects heteroscedasticity and correlated responses from cluster samples. The method uses the ordinary estimates of regression coefficients and other parameters of the model, but involves correcting the covariance matrix for model misspecification and sampling design.
+<p>
+<p>
+Methodologically, it was nice that the researcher removed prior to the random assignment households with the following characteristics: all members of the household had over a 60% probability of voting by absentee ballot if they voted or all household members had a greater than a 60% probability of choosing the Democratic primary rather than the Republican primary ( determined by: living in a Democratic precinct, being African - American, beingHispanic, being a single female etc.). Absentees were removed because it was thought that many would have decided to vote or not prior to receipt of the experimental mailings, which were sent to arrive just a few days before the election. This is very important to reduce the *selection biase*.
+<p>
+
+
+the replications will be presented in the following subsections:
+
+### model 1
+
+The first model reports the results of a linear regression in which voter turnout $Y_i$ for individual $i$ is regressed on dummy variables $\{ D_{1i} ,D_{2i} ,D_{3i} ,D_{4i}\}$ marking each of the four treatments (the reference category is the control group). This model is written as:
+
+$$ Y_i= \beta_0 + \beta_1D_{1i} + \beta_2D_{2i} + \beta_3D_{3i} + \beta_4D_{4i} + \epsilon_i$$
+Here's the regression code:
+```{r}
+treatmentmatrix<-model.matrix(~factor(social$treatment)-1)
+Hawthorne<-treatmentmatrix[,2]
+Civic<-treatmentmatrix[,3]
+Neighbors<-treatmentmatrix[,4]
+Self<-treatmentmatrix[,5]
+Voted<- ifelse(social$voted == 'Yes',1,0)
+
+df<- data.frame(Voted,Neighbors, Self,Hawthorne, Civic)
+
+regress_a<-ols(Voted ~ .,data = df, method = "qr",x=T)
+#robust clustered errors#
+cluster_std_regress_a<-robcov(regress_a,social$hh_id,method=c('efron'))
+
+```
+
+
+### Model 2
+The second model embellishes this model by including fixed effects
+ $\{C_{1,i} , C_{2,i},... ,C_{n,i}\}$ for all of the K = 10,000 geographic clusters in which randomization occurred:
+
+$$ Y_i= \beta_0 + \beta_1D_{1i} + \beta_2D_{2i} + \beta_3D_{3i} + \beta_4D_{4i} + \sum_{k=1}^{k-1}\gamma_kC_{ki} + \epsilon_i$$
+
+The advantage of including fixed effects is the potential to eliminate any observed imbalances within each geographic cluster, thereby improving the precision of the estimates.
+
+Here's the regression code:
+```{r}
+Hawthorne<-Hawthorne-ave(Hawthorne,social$cluster)+mean(Hawthorne)
+Civic<-Civic-ave(Civic,social$cluster)+mean(Civic)
+Neighbors<-Neighbors-ave(Neighbors,social$cluster)+mean(Neighbors)
+Self<-Self-ave(Self,social$cluster)+mean(Self)
+Voted <-Voted-ave(Voted,social$cluster)+mean(Voted)
+
+regress_b<-ols(Voted ~ Neighbors + Self + Hawthorne + Civic ,
+               method = "qr",x=T)
+cluster_std_regress_b<-robcov(regress_b,social$hh_id,method=c('efron'))
+```
+
+### Model 3
+
+The third and final model controls further for voting in five recent elections. Namely, adding dummy variables for voting in general elections in November 2002 and 2000, primary elections in August 2004, 2002, and 2000. The regression equation is:
+
+$$ Y_i= \beta_0 + \beta_1D_{1i} + \beta_2D_{2i} + \beta_3D_{3i} + \beta_4D_{4i} + \sum_{k=1}^{k-1}\gamma_kC_{ki}  +λ_1V_{1i} + ... +λ_5V_{5i} +  \epsilon_i$$
+
+
+Using an individual’s voting propensity as a proxy for the extent to which he or she feels an obligation to vote, the researcher divided the observations into six subsamples based on the number of votes cast in five prior elections; the researcher further divided the subsamples according to the number of voters in each household, because household size and past voting are correlated.
+
+As described, This third model controls for voting patterns in prior elections helps to reduce the volatility and potentially reduce the standard deviations. It is not always a good thing to add but, it would be nice to see how it affects the results. However, since previous voting patterns do not depend on the treatment selection, it won't affect the selection bias.
+
+Here's the regression code:
+```{r}
+g2002a<- ifelse(social$g2002 == 'yes',1,0)
+g2000a<- ifelse(social$g2000 == 'yes',1,0)
+p2004a<- ifelse(social$p2004 == 'Yes',1,0)
+p2000a<- ifelse(social$p2000 == 'yes',1,0)
+p2002a<- ifelse(social$p2002 == 'yes',1,0)
+
+g2002<-g2002a-ave(g2002a,social$cluster)+mean(social$cluster)
+g2000<-g2000a-ave(g2000a,social$cluster)+mean(social$cluster)
+p2004<-p2004a-ave(p2004a,social$cluster)+mean(social$cluster)
+p2002<-p2002a-ave(p2002a,social$cluster)+mean(social$cluster)
+p2000<-p2000a-ave(p2000a,social$cluster)+mean(social$cluster)
+
+regress_c<-ols(Voted ~ Neighbors + Self + Hawthorne + Civic + g2002 + g2000 + p2004 + p2002 + p2000 ,method="qr",x=T)
+cluster_std_regress_c<-robcov(regress_c,social$hh_id,method=c('efron'))
+```
+
+### Table 3 results
+<p>
+<style type="text/css">
+td
+{
+    padding:0 15px 0 15px;
+}
+</style>
+<div align="center">
+```{r, results='asis', message = FALSE}
+stargazer(cluster_std_regress_a,cluster_std_regress_b,cluster_std_regress_c, type = "html", 
+         title = "Regression results",
+         style = "ajps",
+         omit = c("g2000","g2002","p2000","p2002","p2004","Constant"),
+         omit.stat = c("adj.rsq","chi2","rsq"),
+          header = FALSE,
+         column.sep.width = "2pt",
+          single.row = TRUE,
+         notes.append = FALSE,
+notes = c("<sup>&sstarf;</sup>p<0.1; <sup>&sstarf;&sstarf;</sup>p<0.05; <sup>&sstarf;&sstarf;&sstarf;</sup>p<0.01")
+)
+```
+</div>
+</p>
+  
+
+<p>
+The results are not exactly the same as in the paper. However, unless the hawthorne covariate, the magnitude of all others are in the right directions and the results are pretty close. Moreover, all of them are statistically significant with the exact same levels of Standard error (0.003). The Neighbors covariate impacts the most in the model (just as in the original paper) with 0.63% (0.81% in the paper). Also,the coefficients are the same across all the three models.
+It is important to mention that beside the 'Hawthorne' covariate that makes no sense, all others are showing a higher $\beta$ in the same order as we would expect according to the social pressure.
+</p>
+
+## Model extantion
+
+A nice adjustment to the model is to add the household size variable to the regression. The hypothesis behind that is whether a voting culture in a specific household. If one member of the family is willing to vote, he/she will affect others in the house. This fact undermines the critical random assignment assumption since belonging to larger households increases the chances of voting.
+
+Before we run the regression, let's take a look at the following count table:
+
+ <table class="table table-striped table-hover ">
+  <thead> 
+```{r table of numbers}
+countable<-social%>%
+  count(voted,hh_size) %>%
+  as.data.frame()
+c<- countable[1:8,]
+ d<- countable[9:16,]
+ 
+ table_4<-left_join(c,d,by = "hh_size")%>%
+  rename('Household size' = hh_size,
+         voted = voted.x,
+         voted. = voted.y,
+         'Voted' = n.x,
+         'Did not vote' = n.y) %>%
+      as.data.frame()
+ 
+ table_4<- table_4 %>%
+   select('Household size','Voted','Did not vote')
+ 
+
+ kable(table_4, align = 'c', format.args = list(big.mark = ",", 
+  scientific = FALSE), caption = "Individuals output by household size", format ="html", escape = F) %>%
+   kable_styling(bootstrap_options = c( "hover", "condensed", "responsive"),fixed_thead = T , full_width = F) %>%
+  column_spec(1, bold = T, border_right = T)
+  
+ 
+ 
+```
+    </tbody>
+</table> 
+    
+We can see from this table that my hypothesis is not reflected in the data. There is no trend where for a bigger household there are more voters than people who didn't vote. Therefore, I would like to suggest creating a dummy variable if the household includes a single member (0) or more (1). 
+
+```{r reg for the hh_size dummy, include=FALSE}
+
+Household_Dum<- social$hh_size
+regress_d<-ols(Voted ~ Neighbors + Self + Hawthorne + Civic + Household_Dum ,method="qr",x=T)
+cluster_std_regress_d<-robcov(regress_d,social$hh_id,method=c('efron'))
+
+```
+
+
+
+<p>
+<style type="text/css">
+td
+{
+    padding:0 15px 0 15px;
+}
+</style>
+<div align="center">
+```{r, results='asis', message = FALSE}
+stargazer(cluster_std_regress_d, type = "html", 
+         title = "Regression results",
+         style = "ajps",
+         omit = "Constant",
+         omit.stat = c("adj.rsq","chi2","rsq"),
+          header = FALSE,
+          column.sep.width = "2pt",
+          single.row = TRUE,
+         notes.append = FALSE,
+notes = c("<sup>&sstarf;</sup>p<0.1; <sup>&sstarf;&sstarf;</sup>p<0.05; <sup>&sstarf;&sstarf;&sstarf;</sup>p<0.01"))
+         
+```
+</div>
+</p>
+The results are very similar to those in the 3 models presented before. Therefore, the dummy for the number of Households do not impact the treatment groups dummies. However, the covariate magnitude is negative as expected.
+
+## New dataset
+
+So far, all the analyses were made on an individual basis. The data was downloaded online and it contains only the relevant variables for tables 2 and 3 (K=16). In detail, For each household, there can be more than one individual.
+in the [experimentdatar R package](https://itamarcaspi.github.io/experimentdatar/) made by [Itamar Caspi](https://itamarcaspi.rbind.io/) and [Susan Athey](https://www.gsb.stanford.edu/faculty-research/faculty/susan-athey) there are a larger data set in terms of variables (K=69) but only 180,002 observation. Closer view of the data shows that the data is in *household* level. Meaning, for each household, it can be only *one* individual. Therefore, there are less observations (N= 180,000 vs N= 344,000). In order to dive into the Machine Learning world, I'll use the data from the `experimentdatar` package which contains many more features.
+
+Before that, I'll present the first model in table 3 for the sake of both comparison with the model in the individual level and to set a starting point for further analyses such as regularizations and predictions.Prior to the analysis I removed two unusfull variables: household ID and employ_rename_20to64.
+
+### Table 3, model 1: Take II
+
+<p>
+<style type="text/css">
+td
+{
+    padding:0 15px 0 15px;
+}
+</style>
+<div align="center">
+
+```{r new data}
+data(social)
+  social_H <- social %>%
+         mutate(Control = ifelse(treatment_dum == 1, 0 ,1))%>%
+         rename(Self = treat_self ,
+                Civic = treat_civic,
+                Hawthorne = treat_hawthorne,
+                Neighbors = treat_neighbors,
+                Voted = outcome_voted) %>%
+     select(-c( "hh_id","employ_rename_20to64"))
+  
+regress_e <- lm(Voted ~ Neighbors + Self  + Hawthorne + Civic , data = social_H, method="qr",x=T)
+
+stargazer(regress_e, type = "html", 
+         title = "Regression results OLS at the Household level",
+         style = "ajps",
+         omit = "Constant",
+         omit.stat = "all",
+          header = FALSE,
+          column.sep.width = "2pt",
+          single.row = TRUE,
+         notes.append = FALSE,
+notes = c("<sup>&sstarf;</sup>p<0.1; <sup>&sstarf;&sstarf;</sup>p<0.05; <sup>&sstarf;&sstarf;&sstarf;</sup>p<0.01"))
+```
+
+</div>
+</p>
+
+In this regression, since the data is in the household level and randomized in this level, we don't need to account for the clustering of individuals within the household. The results are very interesting and very similar to the results in the paper (closer than the models with the data set with the individual level). Here, all the covariates magnitude are as expected. We also can see that when the social pressure is higher, the covariates are higher accordingly. The 'Neighbors' covariate is the higher with 8% than the control group.
+
+Next, as a further extension of the model, I will add to the model other confounding variables, those that may compete with the exposure of interest (the treatment groups) in explaining the outcome of a study. The amount of association "above and beyond" that can be explained by confounding factors provides a more appropriate estimate of the true association which is due to the exposure. In order to find the appropriate confounding variables we will use the automatic method of Lasso. However, it is not straightforward, we need to use the double Lasso or causal tree method. Namely, we want to deal with heterogeneous treatment effects (HTE). How different characteristics of a household affect the outcome.
+
+## Double Machine Learning
+
+When we have a very large number of covariates that are independent to the treatment groups, we want to use the Lasso algorithm to use the best covariates that affect our treatment groups. 
+For the analysis we will force the model to keep the treatments variables. The main idea is to help the model to find the covariates that are correlated both with the outcome and the treatment group. 
+<p>
+First, we will run the regular OLS regression but with the addition of all the rest of the covariates that represent the characteristics of the household such as city number, median income, size, employment rate etc.
+The reason for that is to set this model as a benchmark for the comparison to the **Partialing Out'** and the **Double Lasso** regularization.
+<p>
+Data wrangling:
+```{r Data wrangling, define variables for the trees}
+features <- social_H %>%
+  select(-c( "treatment_dum", "Hawthorne", "Civic","Neighbors","Self",
+               "Control" ))%>%
+  as.data.frame()
+
+D_Civic<- social_H$Civic %>% as.vector()
+D_Hawthorne<- social_H$Hawthorne %>% as.vector()
+D_Self<- social_H$Self %>% as.vector()
+D_Neighbors<- social_H$Neighbors %>% as.vector()
+Outcome_voted<- social_H$Voted %>% as.vector()
+```
+<p>
+<style type="text/css">
+td
+{
+    padding:0 15px 0 15px;
+}
+</style>
+<div align="center">
+```{r simple, results='asis'}
+features <- features %>%
+  as.matrix()
+
+X_D <- data.frame(D_Civic,D_Hawthorne,D_Neighbors,D_Self,features)%>%
+  as.matrix()
+
+simple_lm <- lm(Voted ~ . ,data = social_H, method="qr",x=T)
+
+o<-simple_lm$coefficients[61:64]
+p	<-coef(summary(simple_lm))[59:62, "Std. Error"]
+
+table_5<-rbind(o,p)%>%
+  as.matrix()
+
+table_5<-table_5[1:2,1:3]
+
+stargazer(simple_lm, type = "html", 
+         title = " OLS results",
+         style = "ajps",
+         omit = c(colnames(features),"votedav","dem","nov", "randn","control","Constant","treatment_dum","Control" ) ,
+         omit.stat = c("adj.rsq","chi2"),
+          header = FALSE,
+          column.sep.width = "2pt",
+          single.row = TRUE,
+         notes.append = FALSE,
+notes = c("<sup>&sstarf;</sup>p<0.1; <sup>&sstarf;&sstarf;</sup>p<0.05; <sup>&sstarf;&sstarf;&sstarf;</sup>p<0.01"))
+
+```
+</div>
+</p>
+
+Interestingly, the Hawthorne and Civic treatment groups coefficient are negative. Moreover, the Self variable was *omitted* from the regression.
+It was interesting to see also that the standard errors are 0.3%-0.4% for all treatment groups, exactly as the regression without the covariates.
+Fortunately, we will fix this in the regularizations by forcing the model to use it. This is the place to mention that an OLS with too many variables is overfitted with very low freedom degrees, we should not accept these results due to multicollinearity.
+
+### Partialling Out & Double Lasso results
+
+Models code:
+```{r PO and DL codes}
+
+# civic
+c_part_Lasso <- rlassoEffect(x= X_D, y= Outcome_voted,  d = D_Civic, method = "partialling out")
+
+c_double_Lasso <- 
+  rlassoEffect(x= X_D, y= Outcome_voted,d = D_Civic , method = "double selection")
+
+# hawthorne
+h_part_Lasso <- rlassoEffect(x= X_D, y= Outcome_voted, d = D_Hawthorne, method = "partialling out")
+
+h_double_Lasso <- 
+  rlassoEffect(x= X_D, y= Outcome_voted,d = D_Hawthorne , method = "double selection")
+
+# self
+
+s_part_Lasso <- 
+  rlassoEffect(x= X_D, y= Outcome_voted, d = D_Self, method = "partialling out")
+
+s_double_Lasso <- 
+  rlassoEffect(x= X_D, y= Outcome_voted,d = D_Self , method = "double selection")
+
+# neighbors
+n_part_Lasso <- rlassoEffect(x= X_D, y= Outcome_voted,  d = D_Neighbors, method = "partialling out")
+
+n_double_Lasso <- 
+  rlassoEffect(x= X_D, y= Outcome_voted,d = D_Neighbors , method = "double selection")
+
+```
+
+Tables creation:
+```{r }
+
+## civic
+# OLS
+c_simple_OLS     <- tibble(method = "OLS",
+                          estimate = table_5[1,2],
+                          std.error = table_5[2,2])
+
+# Partialling-out Lasso
+c_results_part_Lasso <- summary(c_part_Lasso)[[1]][1, 1:2]
+c_part_Lasso_tbl     <- tibble(method = "Partialling-out Lasso",
+                          estimate = c_results_part_Lasso[1],
+                          std.error = c_results_part_Lasso[2])
+# Double-selection Lasso
+c_results_double_Lasso <- summary(c_double_Lasso)[[1]][1, 1:2]
+c_double_Lasso_tbl <- tibble(method = "Double-selection Lasso",
+                           estimate = c_results_double_Lasso[1],
+                           std.error = c_results_double_Lasso[2])
+
+
+## hawthorne
+
+# OLS
+h_simple_OLS     <- tibble(method = "OLS",
+                          estimate = table_5[1,1],
+                          std.error = table_5[2,1])
+
+# Partialling-out Lasso
+h_results_part_Lasso <- summary(h_part_Lasso)[[1]][1, 1:2]
+h_part_Lasso_tbl     <- tibble(method = "Partialling-out Lasso",
+                          estimate = h_results_part_Lasso[1],
+                          std.error = h_results_part_Lasso[2])
+# Double-selection Lasso
+h_results_double_Lasso <- summary(h_double_Lasso)[[1]][1, 1:2]
+h_double_Lasso_tbl <- tibble(method = "Double-selection Lasso",
+                           estimate = h_results_double_Lasso[1],
+                           std.error = h_results_double_Lasso[2])
+
+## self
+# OLS
+s_simple_OLS     <- tibble(method = "OLS",
+                          estimate = NA,
+                          std.error = NA )
+
+# Partialling-out Lasso
+s_results_part_Lasso <- summary(s_part_Lasso)[[1]][1, 1:2]
+s_part_Lasso_tbl     <- tibble(method = "Partialling-out Lasso",
+                          estimate = s_results_part_Lasso[1],
+                          std.error = s_results_part_Lasso[2])
+# Double-selection Lasso
+s_results_double_Lasso <- summary(s_double_Lasso)[[1]][1, 1:2]
+s_double_Lasso_tbl <- tibble(method = "Double-selection Lasso",
+                           estimate = s_results_double_Lasso[1],
+                           std.error = s_results_double_Lasso[2])
+## Neignbors
+
+# OLS
+n_simple_OLS     <- tibble(method = "OLS",
+                          estimate = table_5[1,3],
+                          std.error = table_5[2,3])
+# Partialling-out Lasso
+n_results_part_Lasso <- summary(n_part_Lasso)[[1]][1, 1:2]
+n_part_Lasso_tbl     <- tibble(method = "Partialling-out Lasso",
+                          estimate = n_results_part_Lasso[1],
+                          std.error = n_results_part_Lasso[2])
+# Double-selection Lasso
+n_results_double_Lasso <- summary(n_double_Lasso)[[1]][1, 1:2]
+n_double_Lasso_tbl <- tibble(method = "Double-selection Lasso",
+                           estimate = n_results_double_Lasso[1],
+                           std.error = n_results_double_Lasso[2])
+
+
+```
+</p>
+Output:
+</p>
+
+```{r echo= FALSE}
+
+DS_Table_c <- bind_rows(c_simple_OLS, c_part_Lasso_tbl, c_double_Lasso_tbl)
+
+DS_Table_h <- bind_rows(h_simple_OLS, h_part_Lasso_tbl, h_double_Lasso_tbl)
+
+
+kable(DS_Table_c, digits = 4, format.args = list(big.mark = ",", 
+  scientific = FALSE), caption = "Civic dummy double selection", format ="html", escape = F) %>%
+   kable_styling(bootstrap_options = c( "hover", "condensed", "responsive"),fixed_thead = T , full_width = F, position = "float_left") %>%
+  column_spec(1, bold = T, border_right = T)
+
+
+kable(DS_Table_h, digits = 4, format.args = list(big.mark = ",", 
+  scientific = FALSE), caption = "Hawthorne dummy double selection", format ="html", escape = F) %>%
+   kable_styling(bootstrap_options = c( "hover", "condensed", "responsive"),fixed_thead = T , full_width = F, position = "left") %>%
+  column_spec(1, bold = T, border_right = T)
+```
+
+
+```{r echo= FALSE}
+
+# Self table
+DS_Table_s <- bind_rows(s_simple_OLS, s_part_Lasso_tbl, s_double_Lasso_tbl)
+
+DS_Table_n <- bind_rows(n_simple_OLS, n_part_Lasso_tbl, n_double_Lasso_tbl)
+
+                        
+kable(DS_Table_s, digits = 4, format.args = list(big.mark = ",", 
+  scientific = FALSE), caption = "Self dummy double selection", format ="html", escape = F) %>%
+   kable_styling(bootstrap_options = c( "hover", "condensed", "responsive"),fixed_thead = T , full_width = F, position = "float_left") %>%
+  column_spec(1, bold = T, border_right = T)
+
+
+kable(DS_Table_n, digits = 4, format.args = list(big.mark = ",", 
+  scientific = FALSE), caption = "Neighbors dummy double selection", format ="html", escape = F) %>%
+   kable_styling(bootstrap_options = c( "hover", "condensed", "responsive"),fixed_thead = T , full_width = F, position = "left") %>%
+  column_spec(1, bold = T, border_right = T)
+```
+
+Both Double Lasso and Partialling-out yield much more precise estimates. However they reduced the estimates of all treatment groups. In fact, the only treatment group estimated above 1% is the highest treatment group in terms of social pressure - Neighbors (1.7%). Also, the Double Lasso reduced the estimate to be almost zero for all treatment groups where their SE was relatively lower. 
+
+## Causal Trees
+
+Another common method is the Causal tree. The key idea here is to use half of the data to find out where the heterogeneous treatment effect comes from. In other words we would like to find the conditional treatment effect (CATE). Mathematically, it is represented by $\tau(x) = \mathbb{E}[Y_{1i}- Y_{0i} | X_i = x]$
+where $x$ is some specific value of $X_i$ or some range of values (a subset of feature space).
+
+The other half of the data is to estimate the treatment effect of each leaf of the partition.
+
+In order to decide the splits of the tree, treatment effect heterogeneity is rewarded and high variance in estimation of treatment effect is penalized.
+As a first step, I created a data frame of features without the treatment dummies and unnecessary features such as household ID and unrecognized (by me) features.
+
+For each of the treatment groups I'll check what are the important features that create differences.
+
+General notes:
+<ol>
+
+<li> The package used for this analysis will be `causalTree` by Susan Athey and Guido Imbens that builds a binary regression tree model in two stages, but focuses on estimating heterogeneous causal effect. </li>
+
+
+<li> In each split of the data there is a different randomization. I set the seed to 1. It affects the results in a scene where the treatment groups dummies are slightly different from the results from the regressions. It is not important for this analysis since we are interested in the heterogeneity within the treatment group.</li>
+
+
+<li>I removed many irrelevant parameters that are related to the percentages of people of ages in a geographical cluster such as 'percent_20to24years', These variables don't add any important information but they may affect the heterogeneity of the model.</li>
+</ol>
+
+```{r new_data, message=FALSE, warning=FALSE}
+rm(list = ls())
+data(social)
+  social_H <- social %>%
+         mutate(Control = ifelse(treatment_dum == 1, 0 ,1))%>%
+         rename(Self = treat_self ,
+                Civic = treat_civic,
+                Hawthorne = treat_hawthorne,
+                Neighbors = treat_neighbors,
+                Voted = outcome_voted) %>%
+    select(-c( "hh_id","employ_rename_20to64","votedav","dem","nov","aug","percent_under5years","percent_5to9years","percent_10to14years","percent_15to19years","percent_20to24years","percent_25to34years","percent_35to44years","percent_45to54years","percent_55to59years","percent_60to64years","percent_65to74years","percent_75to84years","percent_18yearsandolder","percent_21yearsandover","percent_62yearsandover","percent_65yearsandover", "employ_16"))
+  
+features<- social_H%>%
+  select(-c( "treatment_dum", "Hawthorne", "Civic","Neighbors","Self",
+               "Control", "Voted"))%>%
+  as.data.frame()
+
+D_Civic<- social_H$Civic %>% as.vector()
+D_Hawthorne<- social_H$Hawthorne %>% as.vector()
+D_Self<- social_H$Self %>% as.vector()
+D_Neighbors<- social_H$Neighbors %>% as.vector()
+Outcome_voted<- social_H$Voted %>% as.vector()
+```
+
+
+### Civic Duty Causal Tree
+<p>
+```{r civic create df and split, message=FALSE, warning=FALSE,echo = FALSE }
+civic_tree_df<-data.frame(Outcome_voted,D_Civic,features)
+
+set.seed(1)
+split_civic    <- initial_split(civic_tree_df, prop = 0.5)
+df_civic_train <- training(split_civic) 
+df_civic_estim <- testing(split_civic)
+
+
+civic_tree <- honest.causalTree(
+        formula = "I(Outcome_voted) ~ . - D_Civic",
+        data      = df_civic_train,
+        treatment = df_civic_train$D_Civic,
+        est_data      = df_civic_estim,
+        est_treatment = df_civic_estim$D_Civic,
+        
+        split.Rule   = "CT",
+        split.Honest = TRUE,
+        split.Bucket = TRUE,
+        
+        bucketNum = 5,
+        bucketMax = 100,
+        
+        cv.option = "CT",  
+        cv.Honest = TRUE,
+        split.alpha = 0.5,
+        cv.alpha = 0.5,
+        
+        minsize = 300,
+               cp=0)
+
+
+civic_cptable <- as.data.frame(civic_tree$cptable)
+
+c_min_cp      <- which.min(civic_cptable$xerror)
+c_optim_cp_ct <- civic_cptable[c_min_cp, "CP"]
+pruned_tree <- prune(tree = civic_tree, cp = c_optim_cp_ct)
+
+
+rpart.plot(pruned_tree)
+```
+<p>
+
+Here, the model splits into two leaves where the difference is whether the household size is bigger than 3. If the answer is yes, receiving a letter of civic duty has a negative impact of ~-3% (represent 14% of the sample). The second main branch for households of less that 3 people represent 87% of the sample and has several splits for the percentage of male (if under 49% it has a -0.5% impact) in the geographic cluster of the voter, percent of people with education less than 9th (40% of the sample with a positive impact of 1.3%) grade and median age.
+
+This tree figure and all the upcoming tree figures will be the pruned tree where the 'CP' (stands for Complexity Parameter of the tree) will be at the minimum in terms of X - error.
+The reason for that is to avoid any overfitting of the data. The convention is to have a small tree and the one with least cross validated error given by `printcp` function i.e. ‘xerror’.
+
+
+Next I'll examine whether the results are significant in regressions both in the estimation data and training data where each leave is a dummy.
+It's important to run this analysis on both training and estimation sets because when we build the causal tree we are losing freedom degrees. We can't perform the inference analysis on the same sample. That's why we're testing the leaves on the second subset of data. The statistical inference will use one data subset to produce the leaves dummies and we'll use them on the second independent data subset. That gives us a good way to say if a split is robust. 
+
+The next figure presents regressions analyses for estimating the leaves. Basically, it is a regression of the form $Y= \sum_{i=1}^{n}( \beta_1\gamma_i +\beta_2\gamma_iD) $ where $n$ stands for the leaf, $D$ for the treatment group. The regression is without an intercept.
+
+<p>
+```{r}
+df_civic_all <- tibble(
+        sample = c("training", "estimation"),
+        data   = list(df_civic_train, df_civic_estim)
+)
+
+df_civic_all_leaf <- df_civic_all %>% 
+        mutate(leaf = map(data, ~ predict(pruned_tree,
+                                          newdata = .x,
+                                          type = "vector"))) %>% 
+        mutate(leaf = map(leaf, ~ round(.x, 3))) %>%
+        mutate(leaf = map(leaf, ~ as.factor(.x))) %>%
+        mutate(leaf = map(leaf, ~ enframe(.x, name = NULL, value = "leaf"))) %>% 
+        mutate(data = map2(data, leaf, ~ bind_cols(.x, .y)))
+
+df_civic_all_lm  <- 
+        df_civic_all_leaf %>% 
+        mutate(model = map(data, ~ lm(Outcome_voted ~ leaf + D_Civic * leaf 
+                                      - D_Civic - 1, data = .x))) %>% 
+        mutate(tidy = map(model, broom::tidy, conf.int = TRUE)) %>% 
+        unnest(tidy)
+
+df_civic_all_lm %>% 
+        filter(str_detect(term, pattern = ":D")) %>%  # keep only interaction terms
+        ggplot(aes(x = term,
+                   y = estimate, 
+                   ymin = conf.low,
+                   ymax = conf.high
+        )
+        ) +
+        geom_hline(yintercept = 0, color = "red") +
+        geom_pointrange(position = position_dodge(width = 1), size = 0.8) +
+        labs(
+                x = "",
+                y = "CATE and confidence interval"
+        ) +
+        facet_grid(. ~ sample) +
+        coord_flip()
+```
+<p>
+
+In the pruned tree we can see that the three leaves that were mentioned above are significant with very close coefficients and similar confidence intervals. All the rest are very different and we can't infer heterogeneous impact within the 'Civic Duty'. 
+
+### Hawthorne Causal Tree
+
+Defining the data and splitting:
+```{r hawthorne create hh df and split }
+howthorne_tree_df<-data.frame(Outcome_voted,D_Hawthorne,features)
+
+set.seed(2)
+split_howthorne <- initial_split(howthorne_tree_df, prop = 0.5)
+df_howthorne_train <- training(split_howthorne) 
+df_howthorne_estim <- testing(split_howthorne)
+```
+
+Estimation of Causal tree for Hawthorne Dummy with pruning:
+<p>
+```{r message=FALSE, warning=FALSE ,echo = FALSE}
+howthorne_tree <- honest.causalTree(
+        formula = "I(Outcome_voted) ~ . - D_Hawthorne",
+        data      = df_howthorne_train,
+        treatment = df_howthorne_train$D_Hawthorne,
+        est_data      = df_howthorne_estim,
+        est_treatment = df_howthorne_estim$D_Hawthorne,
+        split.Rule   = "CT",
+        split.Honest = TRUE,
+        split.Bucket = TRUE,
+        bucketNum = 5,
+        bucketMax = 100,
+        cv.option = "CT",  
+        cv.Honest = TRUE,
+        split.alpha = 0.5,
+        cv.alpha = 0.5,
+        
+        minsize = 2000,
+                cp=0)
+
+
+howthorne_cptable <- as.data.frame(howthorne_tree$cptable)
+
+h_min_cp      <- which.min(howthorne_cptable$xerror)
+h_optim_cp_ct <- howthorne_cptable[h_min_cp, "CP"]
+h_pruned_tree <- prune(tree = howthorne_tree, cp = h_optim_cp_ct)
+
+
+rpart.plot(h_pruned_tree)
+```
+<p>
+
+Again, Since the Hawthorne dummy coefficient is relatively low (less than 1%), the splits are not too informative. However, we still can see that the percentage of the population that is employed (20 to 64 years old) is the main split. Inside the split, for geographic clusters with less than 74% employed, there is a positive effect of 1.3%.
+
+Next I'll examine whether the results are significant:
+```{r}
+df_hawthorne_all <- tibble(
+        sample = c("training", "estimation"),
+        data   = list(df_howthorne_train, df_howthorne_estim))
+
+
+df_hawthorne_all_leaf <- df_hawthorne_all %>% 
+        mutate(leaf = map(data, ~ predict(h_pruned_tree,
+                                          newdata = .x,
+                                          type = "vector"))) %>% 
+        mutate(leaf = map(leaf, ~ round(.x, 3))) %>%
+        mutate(leaf = map(leaf, ~ as.factor(.x))) %>%
+        mutate(leaf = map(leaf, ~ enframe(.x, name = NULL, value = "leaf"))) %>% 
+        mutate(data = map2(data, leaf, ~ bind_cols(.x, .y)))
+
+df_hawthorne_all_lm  <- 
+        df_hawthorne_all_leaf %>% 
+        mutate(model = map(data, ~ lm(Outcome_voted ~ leaf + D_Hawthorne * leaf 
+                                      - D_Hawthorne - 1, data = .x))) %>% 
+        mutate(tidy = map(model, broom::tidy, conf.int = TRUE)) %>% 
+        unnest(tidy)
+
+df_hawthorne_all_lm %>% 
+        filter(str_detect(term, pattern = ":D")) %>%  # keep only interaction terms
+        ggplot(aes(x = term,
+                   y = estimate, 
+                   ymin = conf.low,
+                   ymax = conf.high
+        )
+        ) +
+        geom_hline(yintercept = 0, color = "red") +
+        geom_pointrange(position = position_dodge(width = 1), size = 0.8) +
+        labs(
+                x = "",
+                y = "CATE and confidence interval"
+        ) +
+        facet_grid(. ~ sample) +
+        coord_flip()
+```
+
+We can see that the 1.3% leaf estimates are relatively close in both samples. However, the confidence interval is very large so we can't infer if this dummy variable is significant.
+
+### Self Causal Tree 
+
+Defining the data and spliting:
+```{r self create hh df and split }
+self_tree_df<-data.frame(Outcome_voted,D_Self,features)
+set.seed(1)
+split_self    <- initial_split(self_tree_df, prop = 0.5)
+df_self_train <- training(split_self) 
+df_self_estim <- testing(split_self)
+```
+
+<p>
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+self_tree <- honest.causalTree(
+        formula = "I(Outcome_voted) ~ . - D_Self ",
+        data      = df_self_train,
+        treatment = df_self_train$D_Self,
+        est_data      = df_self_estim,
+        est_treatment = df_self_estim$D_Self,
+        split.Rule   = "CT",
+        split.Honest = TRUE,
+        split.Bucket = TRUE,
+        bucketNum = 5,
+        bucketMax = 100,
+        cv.option = "CT",  
+        cv.Honest = TRUE,
+        split.alpha = 0.5,
+        cv.alpha = 0.5,
+        minsize = 850,
+        cp=0)
+
+
+self_cptable <- as.data.frame(self_tree$cptable)
+
+s_min_cp      <- which.min(self_cptable$xerror)
+s_optim_cp_ct <- self_cptable[s_min_cp, "CP"]
+s_pruned_tree <- prune(tree = self_tree, cp = s_optim_cp_ct)
+
+
+rpart.plot(s_pruned_tree)
+```
+<p>
+
+Here, as the social pressure rises, the coefficients are higher at 3.8% for the 'Self' treatment group. The algorithm split the data where the main split is the year of birth. If one was born before 1948, he/she has a lower coefficient (by 6 basis points, 29% of the sample). That makes sense because if a voter was born before 1948, that means he is around 58 years old at the year of voting 2006. we would expect that logistically it would be harder for older people to vote. Alternative reasons can be that they are less affected by social pressure (i.e. especially among their family members).
+
+
+Next I'll examine whether the results are significant:
+<p>
+```{r}
+df_self_all <- tibble(
+        sample = c("training", "estimation"),
+        data   = list(df_self_train, df_self_estim))
+
+
+df_self_all_leaf <- df_self_all %>% 
+        mutate(leaf = map(data, ~ predict(s_pruned_tree,
+                                          newdata = .x,
+                                          type = "vector"))) %>% 
+        mutate(leaf = map(leaf, ~ round(.x, 3))) %>%
+        mutate(leaf = map(leaf, ~ as.factor(.x))) %>%
+        mutate(leaf = map(leaf, ~ enframe(.x, name = NULL, value = "leaf"))) %>% 
+        mutate(data = map2(data, leaf, ~ bind_cols(.x, .y)))
+
+df_self_all_lm  <- 
+        df_self_all_leaf %>% 
+        mutate(model = map(data, ~ lm(Outcome_voted ~ leaf + D_Self * leaf 
+                                      - D_Self - 1, data = .x))) %>% 
+        mutate(tidy = map(model, broom::tidy, conf.int = TRUE)) %>% 
+        unnest(tidy)
+
+df_self_all_lm %>% 
+        filter(str_detect(term, pattern = ":D")) %>%  # keep only interaction terms
+        ggplot(aes(x = term,
+                   y = estimate, 
+                   ymin = conf.low,
+                   ymax = conf.high
+        )
+        ) +
+        geom_hline(yintercept = 0, color = "red") +
+        geom_pointrange(position = position_dodge(width = 1), size = 0.8) +
+        labs(
+                x = "",
+                y = "CATE and confidence interval"
+        ) +
+        facet_grid(. ~ sample) +
+        coord_flip()
+```
+<p>
+
+We can see from the figure that no one of the leaves is significant among both samples. For people that were born before 1948 the coefficient is relatively the same among both samples but the confidence interval is very large.
+
+### Neighbors Causal Tree 
+
+Define the data and split:
+<p>
+```{r Neighbors create hh df and split }
+neighbors_tree_df<-data.frame(Outcome_voted,D_Neighbors,features)
+
+set.seed(1992)
+split_neighbors    <- initial_split(neighbors_tree_df, prop = 0.5)
+df_neighbors_train <- training(split_neighbors) 
+df_neighbors_estim <- testing(split_neighbors)
+```
+<p>
+
+<p>
+```{r message=FALSE, warning=FALSE ,echo = FALSE}
+neighbors_tree <- honest.causalTree(
+        formula = "I(Outcome_voted) ~ . - D_Neighbors ",
+        data      = df_neighbors_train,
+        treatment = df_neighbors_train$D_Neighbors,
+        est_data      = df_neighbors_estim,
+        est_treatment = df_neighbors_estim$D_Neighbors,
+        split.Rule   = "CT",
+        split.Honest = TRUE,
+        bucketNum = 5,
+        bucketMax = 100,
+        
+        cv.option = "CT",  
+        cv.Honest = TRUE,
+        split.alpha = 0.5,
+        cv.alpha = 0.5,
+        minsize = 400,
+                cp=0)
+
+
+neighbors_cptable <- as.data.frame(neighbors_tree$cptable)
+
+n_min_cp      <- which.min(neighbors_cptable$xerror)
+n_optim_cp_ct <- neighbors_cptable[n_min_cp, "CP"]
+n_pruned_tree <- prune(tree = neighbors_tree, cp = n_optim_cp_ct)
+
+
+rpart.plot(n_pruned_tree)
+```
+<p>
+We can see that the heterogeneity comes from the median income in the geographical cluster. The ATE is 7.7%. According to the model, the split of the data will be at the level of 97,000$ where observations with higher income than the median (in a specific geographical cluster) will be more affected by receiving the letter. However, this leaf contains only 4% of the data. For the rest, where the income is lower, the 'randn' is the subsplit. The biggest leaf contains 86% of the observations but not really informative because the rndn feature is unknown to me (I assume it is a randomized variable by its name). Moreover, within this feature, the cluster feature is definitely not interesting because the cluster is just a serial number.
+
+Next I'll examine whether the results are significant:
+<p>
+```{r}
+df_neighbors_all <- tibble(
+        sample = c("training", "estimation"),
+        data   = list(df_neighbors_train, df_neighbors_estim))
+
+
+df_neighbors_all_leaf <- df_neighbors_all %>% 
+        mutate(leaf = map(data, ~ predict(n_pruned_tree,
+                                          newdata = .x,
+                                          type = "vector"))) %>% 
+        mutate(leaf = map(leaf, ~ round(.x, 3))) %>%
+        mutate(leaf = map(leaf, ~ as.factor(.x))) %>%
+        mutate(leaf = map(leaf, ~ enframe(.x, name = NULL, value = "leaf"))) %>% 
+        mutate(data = map2(data, leaf, ~ bind_cols(.x, .y)))
+
+df_neighbors_all_lm  <- 
+        df_neighbors_all_leaf %>% 
+        mutate(model = map(data, ~ lm(Outcome_voted ~ leaf + D_Neighbors * leaf 
+                                      - D_Neighbors - 1, data = .x))) %>% 
+        mutate(tidy = map(model, broom::tidy, conf.int = TRUE)) %>% 
+        unnest(tidy)
+
+df_neighbors_all_lm %>% 
+        filter(str_detect(term, pattern = ":D")) %>%  # keep only interaction terms
+        ggplot(aes(x = term,
+                   y = estimate, 
+                   ymin = conf.low,
+                   ymax = conf.high
+        )
+        ) +
+        geom_hline(yintercept = 0, color = "red") +
+        geom_pointrange(position = position_dodge(width = 1), size = 0.8) +
+        labs(
+                x = "",
+                y = "CATE and confidence interval"
+        ) +
+        facet_grid(. ~ sample) +
+        coord_flip()
+```
+<p>
+
+The only interesting leaf that I'm interested in is the main split for observations with more income than the median of 97,000$ in the geographical cluster. We clearly can see that the coefficient is very different between the samples (very positive in one and very negative in the other) and the confident interval is very large so we can't infer any heterogeneity. Interestingly, the model indicates that being in a cluster with less than the median income in a cluster number under 9512 is very significant with a small confidence interval. It can be indicative if we would know how the cluster number was assigned.
+
+
+# Prediction model
+
+### Data
+
+Using the same data as the last section, the data will be splitted into two sets with a 70:30 ratio for the train set. The reason for the split is to let the machine learn who are the best predictors and how they affect the outcome. The fitted model will be used only on the 30% we kept aside to test how the model performed in terms of predicting power compared to the reality.
+
+```{r message=FALSE, warning=FALSE}
+rm(list = ls())
+
+data(social)
+  social_H <- social %>%
+         mutate(Control = ifelse(treatment_dum == 1, 0 ,1))%>%
+         rename(Self = treat_self ,
+                Civic = treat_civic,
+                Hawthorne = treat_hawthorne,
+                Neighbors = treat_neighbors,
+                Voted = outcome_voted) %>%
+    na.omit()  %>%
+     select(-c( "hh_id","votedav"))
+  
+  
+social_H$Voted <- as.factor(social_H$Voted) 
+
+set.seed(1)
+data_split<- initial_split(social_H, prop = 0.7)
+train_set <- training(data_split)
+test_set <- testing(data_split)
+
+```
+
+## Lasso regression
+
+Since the outcome is binary (voted or not), the regression will be Logistic.
+For “binomial” models, results are for class corresponding to the second level of the factor response. A Lasso regularization will be implemented in the model using the `Glmnet` package.
+.
+
+```{r}
+
+yTrain <- train_set$Voted
+xTrain <- train_set %>%
+  select(-"Voted") %>%
+  as.matrix()
+  
+
+yTest <- test_set$Voted
+xTest <- test_set %>%
+  select(-"Voted") %>%
+  as.matrix()
+  
+
+pen <- rep(1,ncol(xTrain))
+pen[c(60:63)] <- 0
+
+fit_Lasso<- glmnet(x=xTrain , y = yTrain, alpha = 1, penalty.factor= pen, family = "binomial"
+)
+
+plot(fit_Lasso, xvar = "lambda")
+
+```
+
+This figure is the regularization path. It shows for which level of lambda, how many selected features there are and what are their values in terms of coefficient. when the lambda is high, the constraint is important and reduces the covariates to be zero. More we are releasing the constraint, the more the model converges to the OLS results. 
+In the figure we can see four straight lines, they are the four treatment groups that I forced the model to keep. If I wouldn't have done that, the model would have omitted the two weeker treatments group in terms of social pressure (Civic Duty and Hawthorne). I did the same in the following cross validation analysis. This will be discussed further on. 
+
+## Cross Validation
+
+Now, in order to find the best $\lambda$ value, I'll perform a Cross Validation analysis using the `Glmnt` package again with the `cv.glmnet` function that automates the process:
+
+```{r message=FALSE, warning=FALSE}
+yTrain <- as.double(yTrain)
+cvfit<- cv.glmnet(x=xTrain, y= yTrain, alpha = 1, type.measure = "auc", penalty.factor= pen)
+
+plot(cvfit)
+```
+
+Explanation: Each red dot represents the mean square error (MSE) for the model using a certain $\lambda$. The left vertical line represents the $min\lambda$. The second line represent the $\lambda1.se$ for the most regularized model whose mean squared error is within one standard error of the minimal and this is going to be the one I chose (Following the recommendation of the package authors, it represents a simpler model and therefore, easier to interpret). For almost all $\lambda 's$ values the standard deviations are low.
+
+
+## Prediction & Confusion Matrix
+
+Next, using the model with the $\lambda$ that fitted best, I'll predict
+the output based on the test data (30% of the data after the split, n = 54000):
+
+```{r}
+pred_cv_1se <- as.vector(predict(cvfit, s = "lambda.1se", newx = xTest, type = "class"))
+yTest<-as.double(yTest)
+table_one <- table(round(pred_cv_1se),yTest)
+
+conf<-table_one%>%
+  confusionMatrix()
+
+draw_confusion_matrix <- function(cm) {
+
+  layout(matrix(c(1,1,2)))
+  par(mar=c(2,2,2,2))
+  plot(c(100, 345), c(300, 450), type = "n", xlab="", ylab="", xaxt='n', yaxt='n')
+  title('CONFUSION MATRIX', cex.main=2)
+
+  # create the matrix 
+  rect(150, 425, 240, 370, col='#70D868')
+  text(195, 435, 'No vote', cex=1.2)
+  rect(250, 425, 340, 370, col='#E96060')
+  text(295, 435, 'Voted', cex=1.2)
+  text(125, 370, 'Predicted', cex=1.3, srt=90, font=2)
+  text(245, 450, 'Actual', cex=1.3, font=2)
+  rect(150, 305, 240, 365, col='#E96060')
+  rect(250, 305, 340, 365, col='#70D868')
+  text(140, 400, 'No vote', cex=1.2, srt=90)
+  text(140, 335, 'Vote', cex=1.2, srt=90)
+
+  # add in the cm results 
+  res <- as.numeric(cm$table)
+  text(195, 400, res[1], cex=1.6, font=2, col='white')
+  text(195, 335, res[2], cex=1.6, font=2, col='white')
+  text(295, 400, res[3], cex=1.6, font=2, col='white')
+  text(295, 335, res[4], cex=1.6, font=2, col='white')
+
+  # add in the specifics 
+  plot(c(100, 0), c(100, 0), type = "n", xlab="", ylab="", main = "DETAILS", xaxt='n', yaxt='n')
+  text(10, 90, names(cm$byClass[1]), cex=1.2, font=2)
+  text(10, 70, round(as.numeric(cm$byClass[1]), 3), cex=1.2)
+  text(30, 90, names(cm$byClass[2]), cex=1.2, font=2)
+  text(30, 70, round(as.numeric(cm$byClass[2]), 3), cex=1.2)
+  text(50, 90, names(cm$byClass[5]), cex=1.2, font=2)
+  text(50, 70, round(as.numeric(cm$byClass[5]), 3), cex=1.2)
+  text(70, 90, names(cm$byClass[6]), cex=1.2, font=2)
+  text(70, 70, round(as.numeric(cm$byClass[6]), 3), cex=1.2)
+  text(90, 90, names(cm$byClass[7]), cex=1.2, font=2)
+  text(90, 70, round(as.numeric(cm$byClass[7]), 3), cex=1.2)
+
+  # add in the accuracy information 
+  text(30, 40, names(cm$overall[1]), cex=1.5, font=2)
+  text(30, 15, round(as.numeric(cm$overall[1]), 3), cex=1.4)
+  text(70, 40, names(cm$overall[2]), cex=1.5, font=2)
+  text(70, 15, round(as.numeric(cm$overall[2]), 3), cex=1.4)
+} 
+draw_confusion_matrix(conf)
+
+```
+
+Sensitivity refers to a test's ability to designate an individual who voted as positive. A highly sensitive test means that there are few false negative (FN) results, and thus fewer cases of people who voted are missed. However, the $Specificity =\frac{TN}{TN+FP} = \frac{CorectNegPredicition}{AllNegCases}$ is very low, the model generates many false-positive (FP) results. The ability of the model to predict who is going to vote is very low. On the other hand, the model's ability to predict who's going to stay home on the election day is very high. The term is the accuracy that is measured as $\frac{CorrectPrediction}{Total Cases}$.
+
+
+### ROC Curve
+The trade off between specificity and sensitivity is often displayed using a Receiver Operator Characteristic (ROC) Curve:
+<p>
+```{r}
+ROCit_obj <- rocit(score = pred_cv_1se,class= yTest )
+#ciAUC(ROCit_obj)
+plot(ROCit_obj)
+```
+
+<p>
+
+This figure shows us clearly that the AUC is low (69%).
+
+
+## Variavble Importance for the Lasso Model
+
+<div class = "row">
+<div class = "col-md-6">
+```{r echo = FALSE}
+coefList <- coef(cvfit, s='lambda.1se')
+coefList <- data.frame(coefList@Dimnames[[1]][coefList@i+1],coefList@x)
+names(coefList) <- c('var','val')
+
+coefList[2:50,] %>%
+  arrange(-val) %>%
+  head( n = 10) %>%
+  kable(row.names = FALSE, digits = 3,
+             col.names = c("Variable", "estimates"),align = 'c', format.args = list(big.mark = ",", 
+  scientific = FALSE)) %>%
+   kable_styling(bootstrap_options = c( "hover", "condensed", "responsive"),fixed_thead = T , full_width = F) %>%
+  column_spec(1, bold = T, border_right = T)
+```
+</div>
+
+<div class = "col-md-6">
+```{r message=FALSE, warning=FALSE, fig.height = 6}
+vip(cvfit ,geom = "col", color = "black", fill = "lightblue", alpha = 0.9)
+
+```
+
+</div>
+</div>
+
+The function `vip` computes the influence on the Y responses of every redictor X in the model.
+We can see that the two best predictors are the dummies for people who voted in earlier elections. As expected the most recent election dummy in the data (2004) is higher than the older one (2002) in terms of coefficient. Afterwards, comes the treatment variable we would expect to see: 'Neighbor' dummy which represents the treatment group with the highest level of social pressure. In the same order as expected, the rest of the treatment group shows up with coefficient values that are close to the original results in the paper. In that manner, the model did a great job. All the variables the researchers suggested appear to be the most significant. 
+
+
+## Other algorithms
+Using `DALEX` Package, Here are three additional prediction models that I will perform in order to find the model that predicts the best outcome.
+
+*Thecnical Note*: Unfortunately, the computing power that is needed to `knit` the `.Rmd` file is too high (cannot memorize a vector above 1 GB, that is the Random Forest algorithm). Therefore, I performed the analysis individually in chunks and I saved the plots of the outcome that will be present. Of course, all codes will be presented in order to show my work (with `#` in the code chunks).
+
+#### Randon Forest, Principle Component and Boosting codes
+
+```{r}
+
+#formula_full <- Voted ~ . 
+#train_set$Voted <- as.double(train_set$Voted)
+#set.seed(1)
+#fitControl <- trainControl(method = "repeatedcv", number = 5,                            repeats = 3)
+
+
+
+### Randon Forest
+
+# rf <- train(formula_full, data = train_set, method = "rf", trControl = fitControl)
+
+#pred_rf <- round(predict(rf, newdata = test_set ,type = "class"))
+
+
+### Principle component
+
+#pcr <- train(formula_full, data = train_set, method = "pcr", trControl = fitControl)
+
+# pred_pcr <- round(predict(pcr, newdata = test_set))
+
+
+### Boosting
+# gbm <- train(formula_full, data = train_set, method = "gbm",trControl = fitControl)
+
+# pred_boos <- round(predict(gbm, newdata = test_set))
+
+
+```
+
+#### Explainers creation coeds
+```{r  message=FALSE, warning=FALSE}
+
+# library(DALEX)
+# yTrain<- as.double(yTrain)
+# log_explainer <- explain(Log, label="Logistic", data = train_set, y = yTrain)
+
+# pcr_explainer <- explain(pcr, label="Principal Components", data = train_set, y = yTrain)
+
+# rf_explainer <- explain(rf, label="Random Forest", data = train_set, y = yTrain)
+
+# gbm_explainer <- explain(gbm, label="Boosting", data = train_set,y = yTrain)
+```
+
+### Model Performance Analysis
+
+```{r}
+
+# mp_pcr <- model_performance(pcr_explainer)
+# mp_rf <- model_performance(rf_explainer)
+# mp_gbm <- model_performance(gbm_explainer)
+# mp_lg<- model_performance(log_explainer)
+
+# plot(mp_rf, mp_pcr, mp_gbm, mp_lg)
+```
+
+![](Model Performance plot2.png)
+
+We can see interestingly that the Boosting model performs almost identically as the Logistic model. The Random Forest model performs poorly relatively to the rest.
+In the Random Forest Algorithm, in default, the number of trees that the algorithm is running is 500. Each time the algorithm is reducing the Out of Bag 'OOB' sample. In the last interaction, the oob was 29.63%. The algorithm started with an OOB of 37.6%.
+
+
+### Boxplot of the Model Performance
+
+![](Boxplot.png)
+
+Boxplots are a measure of how well distributed is the data in a data set. It divides the data set into three quartiles. This graph represents the minimum, maximum, median, first quartile and third quartile in the data set. It is also useful in comparing the distribution of data across data sets by drawing boxplots for each of them.
+
+The red dots stand for RMSE of residuals. As we saw in the figure, the logistic and the 'GBM' methods are very close to each other in terms of RMSE. The extreme data of the PCR model are much more dense.
+ 
+ 
+### RMSE Table of all models
+
+As shown in the Boxplot, Here's the exact values for the RMSE in each model.
+
+
+```{r, out.width = "200px"}
+knitr::include_graphics("RMSE PLOT.jpg")
+```
+
+We can see that the best model in terms of RMSE, is the Boosting model (with a lower value by 0.008). We already know that the Random Forest model is really not good so it's not interesting to compare him.
+
+The next step will be to built a confusion matrix for the model:
+
+
+### Confusion Matrix for the Boosting model
+
+```{r, out.width = "650px", fig.align="center"}
+knitr::include_graphics("conf_boosting2.jpg")
+```
+
+We can see from the confusion matrix that the Accuracy is a slightly higher 70.8%. The accuracy is measured as $\frac{CorrectPrediction}{Total Cases}$. However, the FP (False Positive) is very high. In detail, the $Specificity =\frac{TN}{TN+FP} = \frac{CorectNegPredicition}{AllNegCases}$ is still low (22%).
+ 
+
+#### Feature importance plot
+
+```{r}
+# importance_log <- variable_importance(log_explainer)
+# importance_pcr <- variable_importance(pcr_explainer)
+# importance_rf <- variable_importance(rf_explainer)
+# importance_gbm <- variable_importance(gbm_explainer)
+# plot(importance_pcr, importance_gbm, max_vars = 4)
+```
+
+![](Feature - importance2.png)
+
+We can see that no one of the models selected the treatment groups in the top 4 indicators. In Both models the feature claster shows up. again, it is a serial number so it is not too indicative.
+
+### Conclusion
+
+For predicting the outcome I suggest that the best model is the Logistic regression regularized with Lasso constraint. As expected we could see that the most important variables that explained the model best are exactly the one we would expect. Namely, all treatment groups were there (although we forced the model to keep them they appeared to be more important than others) in the same order we would expect. Moreover, the dummies of previous votes were significant in the same order we would expect where the recent elections (2004) were more important than older elections. We can conclude from these results that the experiment was very well designed as Gerber, Green, and Larimer well formulated the letter in terms of social pressure and the assumption that the dummies for earlier voting will be important in the analysis. We also saw interestingly that Machine Learning methods led us to the same results with further interesting findings about the Heterogeneity within the treatment effects.
+
+Unfortunately, the predictions model performed poorly with a low accuracy and other relevant models couldn't perform better.
+
+
