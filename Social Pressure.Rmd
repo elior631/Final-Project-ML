@@ -1276,4 +1276,6 @@ For predicting the outcome I suggest that the best model is the Logistic regress
 
 Unfortunately, the predictions model performed poorly with a low accuracy and other relevant models couldn't perform better.
 
+Please feel free to use the code on my Github account in the [link](https://github.com/elior631/Final-Project-ML)
+
 
