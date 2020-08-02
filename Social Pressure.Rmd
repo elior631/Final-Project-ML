@@ -58,7 +58,7 @@ Table 2 reports basic turnout rates for each of the experimental groups (treatme
 social<-read.csv(file="GerberGreenLarimer_APSR_2008_social_pressure.csv",head=TRUE,sep=",")
 social$treatment<-as.factor(social$treatment)
 table2<-table(social$voted,social$treatment)
-round(prop.table(table2,2)*100,1)
+# round(prop.table(table2,2)*100,1)
 table2_row1<-as.vector(round(prop.table(table2,2)*100,1)[2,])
 table2_row2<- as.vector(table2[1,] + table2[2,])
 
@@ -193,7 +193,7 @@ notes = c("<sup>&sstarf;</sup>p<0.1; <sup>&sstarf;&sstarf;</sup>p<0.05; <sup>&ss
 </p>
 
 <p>
-**General note**: The regression tables are made using the `stargazer` package with `Social Science` style where the parenthesis is the robust cluster standard errors.
+*General note*: The regression tables are made using the `stargazer` package with `Social Science` style where the parenthesis is the robust cluster standard errors.
 </p>
 
 <p>
