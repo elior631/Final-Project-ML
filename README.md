@@ -1,5 +1,9 @@
 # Social Pressure - Final project
 
+<a><img src="https://mfa.gov.il/MFA/IsraelExperience/Experience2014/HUJI-LOGO.jpg" alt="Fintech logo" align="right" width="140" height="100" /></a>
+
+
+
 This project is the final assignment in the course "Machine Learning for economist" at the Hebrew University of Jerusalem, spring 2020.
 For the project I replicated the main results of the paper:
 > “Social Pressure and Voter Turnout: Evidence from a Large-Scale Field Experiment” by Gerber, Green, and Larimer (2008)".
