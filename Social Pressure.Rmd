@@ -54,7 +54,7 @@ rsample, knitr,dplyr,experimentdatar,hdm,causalTree, glmnet, vip,stargazer, ROCi
 
 Table 2 reports basic turnout rates for each of the experimental groups (treatments).
 
-```{r message=FALSE, warning=FALSE, include=FALSE}
+```{r table 2 replication}
 social<-read.csv(file="GerberGreenLarimer_APSR_2008_social_pressure.csv",head=TRUE,sep=",")
 social$treatment<-as.factor(social$treatment)
 table2<-table(social$voted,social$treatment)
@@ -94,9 +94,9 @@ Methodologically, it was nice that the researcher removed before the random assi
 
 the replications will be presented in the following subsections:
 
-### model 1
+### Model 1
 
-The first model reports the results of a linear regression in which voter turnout $Y_i$ for individual $i$ is regressed on dummy variables $\{ D_{1i} ,D_{2i} ,D_{3i} ,D_{4i}\}$ marking each of the four treatments (the reference category is the control group). This model is written as:
+The first model reports the results of a linear regression in which voter turnout $Y_i$ for individual $i$ is regressed on dummy variables $\{ D_{1i} ,D_{2i} ,D_{3i} ,D_{4i}\}$ marking each of the four treatments (Civic Duty, Hawthorne, Self and Neighbors repetitively) where the reference category is the control group. This model is written as:
 
 $$ Y_i= \beta_0 + \beta_1D_{1i} + \beta_2D_{2i} + \beta_3D_{3i} + \beta_4D_{4i} + \epsilon_i$$
 Here's the regression code:
@@ -191,7 +191,10 @@ notes = c("<sup>&sstarf;</sup>p<0.1; <sup>&sstarf;&sstarf;</sup>p<0.05; <sup>&ss
 ```
 </div>
 </p>
-  
+
+<p>
+**General note**: The regression tables are made using the `stargazer` package with `Social Science` style where the parenthesis is the robust cluster standard errors.
+</p>
 
 <p>
 The results are not the same as in the paper. However, unless the Hawthorne covariate, the magnitude of all others is in the right direction and the results are pretty close. Moreover, all of them are statistically significant with the same levels of Standard error (0.003). The Neighbors covariate impacts the most in the model (just as in the original paper) with 0.63% (0.81% in the paper). Also, the coefficients are the same across all three models.
@@ -275,7 +278,7 @@ The results are very similar to those in the 3 models presented before. Therefor
 
 ## New dataset
 
-So far, all the analyses were made on an individual basis. The data was downloaded online and it contains only the relevant variables for tables 2 and 3 (K=16). In detail, For each household, there can be more than one individual.
+So far, all the analyses were made on an individual basis. The data was downloaded online from the Yale University database and it contains only the relevant variables for tables 2 and 3 (K=16). In detail, For each household, there can be more than one individual.
 in the [experimentdatar R package](https://itamarcaspi.github.io/experimentdatar/) made by [Itamar Caspi](https://itamarcaspi.rbind.io/) and [Susan Athey](https://www.gsb.stanford.edu/faculty-research/faculty/susan-athey) there are a larger data set in terms of variables (K=69) but only 180,002 observation. A closer view of the data shows that the data is in *household* level. Meaning, for each household, it can be only *one* individual. Therefore, there are less observations (N= 180,000 vs N= 344,000). To dive into the Machine Learning world, I'll use the data from the `experimentdatar` package which contains many more features.
 
 Before that, I'll present the first model in table 3 for the sake of both compared with the model at the individual level and to set a starting point for further analyses such as regularizations and predictions. Before the analysis, I removed two unuseful variables: household ID and employ_rename_20to64.
@@ -326,15 +329,14 @@ notes = c("<sup>&sstarf;</sup>p<0.1; <sup>&sstarf;&sstarf;</sup>p<0.05; <sup>&ss
 
 In this regression, since the data is at the household level and randomized in this level, we don't need to account for the clustering of individuals within the household. The results are very interesting and very similar to the results in the paper (closer than the models with the data set with the individual level). Here, all the covariate's magnitude is as expected. We also can see that when social pressure is higher, the covariates are higher accordingly. The 'Neighbors' covariate is higher with 8% than the control group.
 
-Next, as a further extension of the model, I will add to the model other confounding variables, those that may compete with the exposure of interest (the treatment groups) in explaining the outcome of a study. The amount of association "above and beyond" that can be explained by confounding factors provides a more appropriate estimate of the true association which is due to the exposure. In order to find the appropriate confounding variables, we will use the automatic method of Lasso. However, it is not straightforward, we need to use the double Lasso or causal tree method. Namely, we want to deal with heterogeneous treatment effects (HTE). How different characteristics of a household affect the outcome.
+Next, as a further extension of the model, I will add to the model other confounding variables, those that may compete with the exposure of interest (the treatment groups) in explaining the outcome of a study. The amount of association "above and beyond" that can be explained by confounding factors provides a more appropriate estimate of the true association which is due to the exposure. To find the appropriate confounding variables, we will use the automatic method of Lasso. However, it is not straightforward, we need to use the double selection method. A major advantage of the *double selection* method is that it is heteroskedasticity robust. They showed that the coefficients are true even if the selection is not perfect. Another methods that will be presented is *Causal tree* method. That is, to deal with heterogeneous in the treatment effects (HTE). In words, how different characteristics of a household affect the outcome within treatment variable.
 
 ## Double Machine Learning
 
-When we have a very large number of covariates that are independent of the treatment groups, we want to use the Lasso algorithm to use the best covariates that affect our treatment groups. 
 For the analysis, we will force the model to keep the treatment variables. The main idea is to help the model to find the covariates that are correlated both with the outcome and the treatment group. 
 <p>
 First, we will run the regular OLS regression but with the addition of all the rest of the covariates that represent the characteristics of the household such as city number, median income, size, employment rate, etc.
-The reason for that is to set this model as a benchmark for the comparison to the **Partialing Out'** and the **Double Lasso** regularization.
+The reason for that is to set this model as a benchmark for the comparison to the **Partialing Out** and the **Double Lasso** regularization.
 <p>
 Data wrangling:
 ```{r Data wrangling, define variables for the trees}
@@ -1004,7 +1006,7 @@ test_set <- testing(data_split)
 
 Since the outcome is binary (voted or not), the regression will be Logistic.
 For “binomial” models, results are for class corresponding to the second level of the factor response. A Lasso regularization will be implemented in the model using the `Glmnet` package.
-.
+
 
 ```{r}
 
@@ -1044,7 +1046,7 @@ cvfit<- cv.glmnet(x=xTrain, y= yTrain, alpha = 1, type.measure = "auc", penalty.
 plot(cvfit)
 ```
 
-Explanation: Each red dot represents the mean square error (MSE) for the model using a certain $\lambda$. The left vertical line represents the $min\lambda$. The second line represents the $\lambda1.se$ for the most regularized model whose mean squared error is within one standard error of the minimal and this is going to be the one I chose (Following the recommendation of the package authors, it represents a simpler model and therefore, easier to interpret). For almost all $\lambda 's$ values the standard deviations are low.
+Explanation: Each red dot represents the mean square error (MSE) for the model using a certain $\lambda$. The left vertical line represents the $min\lambda$. The second line represents the $\lambda1.se$ for the most regularized model whose mean squared error(MSE) is within one standard error of the minimal. The $\lambda1.se$ is going to be the one that will be used in the model (Following the recommendation of the package authors, it represents a simpler model and therefore, easier to interpret). For almost all $\lambda 's$ values the standard deviations are low.
 
 
 ## Prediction & Confusion Matrix
