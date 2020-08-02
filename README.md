@@ -1,6 +1,6 @@
 # Social Pressure - Final project
 
-<a><img src="https://mfa.gov.il/MFA/IsraelExperience/Experience2014/HUJI-LOGO.jpg" alt="Hebrew U logo" align="right" width="140" height="100" /></a>
+<a><img src="http://www.iasei.org.il/images/courses/image.png" alt="Hebrew U logo" align="right" width="140" height="100" /></a>
 
 
 
