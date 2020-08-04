@@ -16,7 +16,7 @@ The project includes some model extensions and other Machine Learning methods th
 Finally, using the same data, I built a prediction model (Logistic regression with regularizations, Random Forests, boosting, and principle component algorithms).
 The model's performance was compared to pick the best one in terms of predicting power. Additionally, variable importance analysis was made.
 
-Please take a moment to read the project in the following **[link](https://raw.githack.com/elior631/Final-Project-ML/master/Social-Pressure.html)**. *Enjoy!*
+Please take a moment to read the project in the following **[link](https://rawcdn.githack.com/elior631/Final-Project-ML/3a6260c57558d9551a05a5b8988f3cf9d42febff/Social-Pressure.html)**. *Enjoy!*
 
 Elior Bliah
 
