@@ -201,7 +201,7 @@ The results are not the same as in the paper. However, unless the Hawthorne cova
 It is important to mention that besides the 'Hawthorne' covariate that makes no sense, all others are showing a higher $\beta$ in the same order as we would expect according to the social pressure.
 </p>
 
-## Model extantion
+## Model extention
 
 A nice adjustment to the model is to add the household size variable to the regression. The hypothesis behind that is whether a voting culture in a specific household. If one member of the family is willing to vote, he/she will affect others in the house. This fact undermines the critical random assignment assumption since belonging to larger households increases the chances of voting.
 
@@ -1128,7 +1128,7 @@ plot(ROCit_obj)
 This figure shows us clearly that the AUC is low (69%).
 
 
-## Variavble Importance for the Lasso Model
+## Variable Importance for the Lasso Model
 
 <div class = "row">
 <div class = "col-md-6">
